@@ -1,0 +1,11 @@
+{
+  "epic_id": "E-002",
+  "text": "As a student, I want to upload my dissertation proposal document and receive a structured set of user stories and acceptance criteria, so that I can build the solution confidently.",
+  "glossary": [
+    {"term": "proposal document", "definition": "A DOCX/PDF containing the research proposal."}
+  ],
+  "constraints": [
+    "Do not store personal data in logs.",
+    "Output must be traceable from epic to stories to scenarios."
+  ]
+}

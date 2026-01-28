@@ -1,0 +1,10 @@
+{
+  "epic_id": "E-001",
+  "text": "As a customer, I want to reset my password if I forget it, so that I can regain access to my account.",
+  "glossary": [
+    {"term": "customer", "definition": "A registered user with an account."}
+  ],
+  "constraints": [
+    "Do not expose whether an email address exists in the system."
+  ]
+}
