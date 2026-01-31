@@ -1,7 +1,12 @@
-# MSc Dissertation — Agentic Requirements Generator
+# Master of Science in Artificial Intelligence Dissertation — Agentic Requirements Generator
 
 This project implements an agentic pipeline that transforms epics into user stories and Gherkin scenarios, with validation and scoring utilities.
-
+## Technology Stack
+* Python 3.11
+* Streamlit (web UI)
+* PostgreSQL 16 + pgvector
+* SQLAlchemy
+* OpenAI API
 ## Setup
 
 ```bash
