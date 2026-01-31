@@ -10,6 +10,7 @@ from dissertation.tools.ambiguity_detector import detect_ambiguities
 from dissertation.tools.gherkin_validator import validate_all
 from dissertation.tools.invest_scorer import score_story_invest
 from dissertation.tools.trace_checker import check_trace
+from dissertation.core.semantic_cache import generate_bundle_cached
 
 # OpenAI agents (optional imports)
 try:
@@ -99,10 +100,10 @@ def _make_req(
     req.quality_reports = reports
     return req
 
-
 def run_llm_baseline(
-    epic: Epic, *, force_openai: bool, model_name: str | None = None, temperature: float = 0.2
-) -> RequirementSet:
+            epic: Epic, *, force_openai: bool, model_name: str | None = None, temperature: float = 0.2
+) -> tuple[RequirementSet, dict]:
+
     run_id = str(uuid.uuid4())
     used = "stub"
 
@@ -111,9 +112,11 @@ def run_llm_baseline(
             raise RuntimeError(
                 "OpenAI forced, but OPENAI_API_KEY missing or generator_agent not available."
             )
-        bundle = generate_with_openai(epic)
+        bundle, cache_meta = generate_bundle_cached(epic)
+        print(f"[cache] {cache_meta}")
+
         used = model_name or os.getenv("OPENAI_MODEL") or "openai"
-        return _make_req(
+        req = _make_req(
             epic,
             run_id,
             "llm_baseline",
@@ -124,12 +127,12 @@ def run_llm_baseline(
             bundle.trace_map,
             temperature,
         )
+        return req, cache_meta
 
     # stub baseline
     stories, scenarios, trace_map = generate_baseline(epic)
-    return _make_req(
-        epic, run_id, "llm_baseline", 0, used, stories, scenarios, trace_map, temperature
-    )
+    req = _make_req(epic, run_id, "llm_baseline", 0, used, stories, scenarios, trace_map, temperature)
+    return req, {"cache_hit": "disabled", "reason": "stub_baseline"}
 
 
 def run_agentic(
@@ -141,7 +144,8 @@ def run_agentic(
     target_score: float = 4.2,
     out_dir: str = "outputs",
     force_min_iters: int = 1,
-) -> RequirementSet:
+) -> tuple[RequirementSet, dict]:
+
     """
     Agentic loop: generate -> validate/score -> (critique -> refine -> validate/score)*.
     Writes audit_log.jsonl + iteration_scores.csv for dissertation evidence.
@@ -169,7 +173,9 @@ def run_agentic(
     iteration_rows = []
 
     # Iteration 0: generate
-    bundle = generate_with_openai(epic)
+    bundle, cache_meta = generate_bundle_cached(epic)
+    print(f"[cache] {cache_meta}")
+
     req = _make_req(
         epic,
         run_id,
@@ -219,7 +225,7 @@ def run_agentic(
     # Only stop early if we've satisfied the "minimum iterations" requirement.
     if hard_ok and avg_score >= target_score and force_min_iters <= 0:
         write_iteration_scores(run_folder, iteration_rows)
-        return best_req
+        return best_req, cache_meta
 
     for it in range(1, max_iters + 1):
         try:
@@ -236,7 +242,7 @@ def run_agentic(
 
             if not crit.should_iterate:
                 write_iteration_scores(run_folder, iteration_rows)
-                return req
+                return req, cache_meta
 
             refined = refiner_fn(epic, req, crit)
             req = _make_req(
@@ -287,7 +293,8 @@ def run_agentic(
 
             if hard_ok and avg_score >= target_score:
                 write_iteration_scores(run_folder, iteration_rows)
-                return req
+                return req, cache_meta
+
 
         except Exception as e:
             audit.log(
@@ -299,7 +306,8 @@ def run_agentic(
                 },
             )
             write_iteration_scores(run_folder, iteration_rows)
-            return best_req
+            return best_req, cache_meta
 
     write_iteration_scores(run_folder, iteration_rows)
-    return best_req
+    return best_req, cache_meta
+

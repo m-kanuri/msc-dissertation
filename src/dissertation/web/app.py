@@ -7,13 +7,15 @@ import streamlit as st
 
 from dissertation.core.exporter import export_bundle
 from dissertation.core.orchestrator import run_agentic, run_llm_baseline
-from dissertation.models.schemas import Epic
+from dissertation.models.schemas import Epic, GlossaryTerm
 
 st.set_page_config(page_title="Agentic Requirements Generator", layout="wide")
+
 st.title("Agentic Requirements Generator")
 st.caption("Enter an Epic → Generate User Stories + Gherkin + Traceability + Audit trail")
 
 with st.sidebar:
+    st.caption(f"DATABASE_URL = {os.getenv('DATABASE_URL')}")
     st.header("Run settings")
     mode = st.selectbox("Mode", ["llm_baseline", "agentic"], index=1)
     model = st.text_input("Model", value=os.getenv("OPENAI_MODEL", "gpt-4o-mini"))
@@ -29,6 +31,7 @@ with st.sidebar:
         target_score = st.number_input(
             "Target score", min_value=1.0, max_value=5.0, value=4.2, step=0.1
         )
+
 
 st.subheader("Epic input")
 st.warning(
@@ -61,13 +64,13 @@ glossary_text = st.text_area(
 generate = st.button("🚀 Generate", type="primary")
 
 
-def parse_glossary(text: str) -> list[dict[str, str]]:
-    items: list[dict[str, str]] = []
+def parse_glossary(text: str) -> list[GlossaryTerm]:
+    items: list[GlossaryTerm] = []
     for line in [raw_line.strip() for raw_line in text.splitlines() if raw_line.strip()]:
         if ":" not in line:
             raise ValueError(f"Glossary line must be 'term: definition' but got: {line}")
         term, definition = [x.strip() for x in line.split(":", 1)]
-        items.append({"term": term, "definition": definition})
+        items.append(GlossaryTerm(term=term, definition=definition))
     return items
 
 
@@ -91,14 +94,14 @@ if generate:
         os.environ["OPENAI_MODEL"] = model
 
         if mode == "llm_baseline":
-            req = run_llm_baseline(
+            result = run_llm_baseline(
                 epic,
                 force_openai=bool(use_openai),
                 model_name=model,
                 temperature=float(temperature),
             )
         else:
-            req = run_agentic(
+            result = run_agentic(
                 epic,
                 model_name=model,
                 temperature=float(temperature),
@@ -107,6 +110,56 @@ if generate:
                 out_dir=str(out_dir),
                 force_min_iters=int(force_min_iters),
             )
+
+        # Support both return styles:
+        # - old: req
+        # - new: (req, meta)
+        if isinstance(result, tuple):
+            req, meta = result
+
+
+            def render_cache_meta(cache_meta: dict) -> None:
+                hit = cache_meta.get("cache_hit", "unknown")
+
+                if hit == "miss":
+                    st.warning("Cache MISS — generated via OpenAI and stored in Postgres/pgvector.")
+                elif hit == "hash":
+                    st.success("Cache HIT (exact match) — returned from database (no OpenAI call).")
+                elif hit == "semantic_reuse":
+                    sim = meta.get("similarity")
+                    if sim is not None:
+                        st.success(f"Cache HIT (semantic) — reused closest match (similarity {sim:.3f}).")
+                    else:
+                        st.success("Cache HIT (semantic) — reused closest match.")
+                elif hit == "semantic_refresh_needed":
+                    sim = meta.get("similarity")
+                    if sim is not None:
+                        st.info(f"Near match found (similarity {sim:.3f}) — refresh recommended.")
+                    else:
+                        st.info("Near match found — refresh recommended.")
+                elif hit == "disabled":
+                    st.info("Cache disabled (baseline stub).")
+                else:
+                    st.info(f"Cache status: {hit}")
+
+                with st.expander("Cache details"):
+                    st.json(meta)
+
+
+            # Support both return styles:
+            # - old: req
+            # - new: (req, meta)
+            if isinstance(result, tuple):
+                req, meta = result
+                render_cache_meta(meta)
+            else:
+                req = result
+                meta = None
+
+
+        else:
+            req = result
+            meta = None
 
         run_folder = export_bundle(epic, req, out_dir)
         run_path = Path(run_folder)
