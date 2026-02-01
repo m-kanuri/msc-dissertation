@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from dissertation.models.schemas import Epic, RequirementSet
+from dissertation.core.jira_csv_exporter import export_jira_csv
 
 
 def to_markdown(epic: Epic, req: RequirementSet) -> str:
@@ -82,7 +83,7 @@ def export_bundle(epic: Epic, req: RequirementSet, out_dir: str | Path) -> Path:
             f"{qr.story_id},{qr.overall_score:.2f},{inv.I},{inv.N},{inv.V},{inv.E},{inv.S},{inv.T},{qr.gherkin_valid}"
         )
     (run_folder / "summary.csv").write_text("\n".join(rows), encoding="utf-8")
-
+    export_jira_csv(epic, req, run_folder / "jira_import.csv")
     return run_folder
 
 
