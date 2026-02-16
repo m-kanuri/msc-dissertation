@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any, cast
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -29,12 +30,12 @@ Rules:
 """
 
 
-def _call_json_mode(messages: list[dict], model: str) -> str:
+def _call_json_mode(messages: list[dict[str, str]], model: str) -> str:
     client = get_client()
     resp = client.responses.create(
         model=model,
-        input=messages,
-        text={"format": {"type": "json_object"}},
+        input=cast(Any, messages),  # OpenAI SDK typing is strict; runtime is fine
+        text=cast(Any, {"format": {"type": "json_object"}}),
     )
     return resp.output_text
 

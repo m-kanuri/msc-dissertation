@@ -1,7 +1,7 @@
 import hashlib
 
+from dissertation.core.cache_store import get_cached_by_similarity, store_bundle
 from dissertation.core.openai_client import embed_text
-from dissertation.core.cache_store import store_bundle, get_cached_by_similarity
 
 text1 = "As a user, I want to reset my password so that I can regain access."
 text2 = "Allow users to reset forgotten passwords to access their account again."

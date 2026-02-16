@@ -5,12 +5,12 @@ import traceback
 import uuid
 
 from dissertation.agents.baseline_generator import generate_baseline
+from dissertation.core.semantic_cache import generate_bundle_cached
 from dissertation.models.schemas import Epic, QualityReport, RequirementSet, RunMetadata
 from dissertation.tools.ambiguity_detector import detect_ambiguities
 from dissertation.tools.gherkin_validator import validate_all
 from dissertation.tools.invest_scorer import score_story_invest
 from dissertation.tools.trace_checker import check_trace
-from dissertation.core.semantic_cache import generate_bundle_cached
 
 # OpenAI agents (optional imports)
 try:
@@ -100,8 +100,9 @@ def _make_req(
     req.quality_reports = reports
     return req
 
+
 def run_llm_baseline(
-            epic: Epic, *, force_openai: bool, model_name: str | None = None, temperature: float = 0.2
+    epic: Epic, *, force_openai: bool, model_name: str | None = None, temperature: float = 0.2
 ) -> tuple[RequirementSet, dict]:
 
     run_id = str(uuid.uuid4())
@@ -131,7 +132,9 @@ def run_llm_baseline(
 
     # stub baseline
     stories, scenarios, trace_map = generate_baseline(epic)
-    req = _make_req(epic, run_id, "llm_baseline", 0, used, stories, scenarios, trace_map, temperature)
+    req = _make_req(
+        epic, run_id, "llm_baseline", 0, used, stories, scenarios, trace_map, temperature
+    )
     return req, {"cache_hit": "disabled", "reason": "stub_baseline"}
 
 
@@ -145,7 +148,6 @@ def run_agentic(
     out_dir: str = "outputs",
     force_min_iters: int = 1,
 ) -> tuple[RequirementSet, dict]:
-
     """
     Agentic loop: generate -> validate/score -> (critique -> refine -> validate/score)*.
     Writes audit_log.jsonl + iteration_scores.csv for dissertation evidence.
@@ -295,7 +297,6 @@ def run_agentic(
                 write_iteration_scores(run_folder, iteration_rows)
                 return req, cache_meta
 
-
         except Exception as e:
             audit.log(
                 "error",
@@ -310,4 +311,3 @@ def run_agentic(
 
     write_iteration_scores(run_folder, iteration_rows)
     return best_req, cache_meta
-

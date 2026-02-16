@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-import os
-from pathlib import Path
 import csv
 import io
+import os
+from pathlib import Path
 
 import streamlit as st
 
 from dissertation.core.exporter import export_bundle
 from dissertation.core.orchestrator import run_agentic, run_llm_baseline
 from dissertation.models.schemas import Epic, GlossaryTerm
-
 
 st.set_page_config(page_title="Agentic Requirements Generator", layout="wide")
 st.title("Agentic Requirements Generator")
@@ -50,7 +49,7 @@ def build_jira_csv(epic: Epic, req) -> str:
     Returns Jira-importable CSV as a string.
     - Epic row
     - Story rows linked to Epic via 'Epic Link'
-    - Scenario rows as Sub-tasks linked via 'Parent Summary'
+    - Scenarios are embedded into the Story Description (NO sub-task rows)
     """
     output = io.StringIO()
     writer = csv.DictWriter(
@@ -61,7 +60,7 @@ def build_jira_csv(epic: Epic, req) -> str:
             "Description",
             "Epic Name",
             "Epic Link",
-            "Parent Summary",
+            "Parent Summary",  # kept for compatibility; blank in rows
         ],
     )
     writer.writeheader()
@@ -80,17 +79,20 @@ def build_jira_csv(epic: Epic, req) -> str:
         }
     )
 
-    # Map story_id -> summary for parent linking
-    story_summary_by_id: dict[str, str] = {}
+    # Group scenarios by story_id so we can embed them into the correct story
+    scenarios_by_story: dict[str, list] = {}
+    for sc in req.scenarios:
+        scenarios_by_story.setdefault(sc.story_id, []).append(sc)
 
-    # Story rows
+    # Story rows (with embedded scenarios)
     for us in req.stories:
-        story_text = us.story_text  # <-- your schema uses story_text
+        story_text = us.story_text
         story_summary = f"{us.story_id} {story_text[:60]}".strip()
-        story_summary_by_id[us.story_id] = story_summary
 
-        desc_lines = [story_text]
+        desc_lines: list[str] = []
+        desc_lines.append(story_text)
 
+        # Assumptions / questions
         if getattr(us, "assumptions", None):
             desc_lines.append("")
             desc_lines.append("Assumptions:")
@@ -101,6 +103,23 @@ def build_jira_csv(epic: Epic, req) -> str:
             desc_lines.append("Open Questions:")
             desc_lines.extend([f"- {q}" for q in us.open_questions])
 
+        # ✅ Embed scenarios into the story description
+        story_scenarios = scenarios_by_story.get(us.story_id, [])
+        if story_scenarios:
+            desc_lines.append("")
+            desc_lines.append("Acceptance Criteria (Gherkin):")
+
+            for sc in story_scenarios:
+                desc_lines.append("")
+                desc_lines.append(f"{sc.scenario_id}: {sc.title}")
+
+                for g in sc.given:
+                    desc_lines.append(f"Given {g}")
+                for w in sc.when:
+                    desc_lines.append(f"When {w}")
+                for t in sc.then:
+                    desc_lines.append(f"Then {t}")
+
         writer.writerow(
             {
                 "Issue Type": "Story",
@@ -109,32 +128,6 @@ def build_jira_csv(epic: Epic, req) -> str:
                 "Epic Name": "",
                 "Epic Link": epic_name,
                 "Parent Summary": "",
-            }
-        )
-
-    # Sub-task rows (scenarios)
-    for sc in req.scenarios:
-        parent_summary = story_summary_by_id.get(sc.story_id)
-        if not parent_summary:
-            continue
-
-        sc_summary = f"{sc.scenario_id} {sc.title}".strip()
-        sc_desc = ["Scenario: " + sc.title]
-        for g in sc.given:
-            sc_desc.append(f"Given {g}")
-        for w in sc.when:
-            sc_desc.append(f"When {w}")
-        for t in sc.then:
-            sc_desc.append(f"Then {t}")
-
-        writer.writerow(
-            {
-                "Issue Type": "Sub-task",
-                "Summary": sc_summary,
-                "Description": "\n".join(sc_desc),
-                "Epic Name": "",
-                "Epic Link": "",
-                "Parent Summary": parent_summary,
             }
         )
 
@@ -156,7 +149,9 @@ def read_text_if_exists(path: Path) -> str:
 
 
 with st.sidebar:
-    st.caption("DATABASE_URL is set ✅" if os.getenv("DATABASE_URL") else "DATABASE_URL is NOT set ❌")
+    st.caption(
+        "DATABASE_URL is set ✅" if os.getenv("DATABASE_URL") else "DATABASE_URL is NOT set ❌"
+    )
     st.header("Run settings")
     mode = st.selectbox("Mode", ["llm_baseline", "agentic"], index=1)
     model = st.text_input("Model", value=os.getenv("OPENAI_MODEL", "gpt-4o-mini"))
@@ -165,9 +160,13 @@ with st.sidebar:
     if mode == "llm_baseline":
         use_openai = st.checkbox("Use OpenAI", value=True)
     else:
-        force_min_iters = st.number_input("Force min iters", min_value=0, max_value=5, value=1, step=1)
+        force_min_iters = st.number_input(
+            "Force min iters", min_value=0, max_value=5, value=1, step=1
+        )
         max_iters = st.number_input("Max iters", min_value=0, max_value=5, value=2, step=1)
-        target_score = st.number_input("Target score", min_value=1.0, max_value=5.0, value=4.2, step=0.1)
+        target_score = st.number_input(
+            "Target score", min_value=1.0, max_value=5.0, value=4.2, step=0.1
+        )
 
 
 st.subheader("Epic input")
@@ -182,7 +181,9 @@ with col1:
 with col2:
     out_dir = st.text_input("Output folder", value="outputs")
 
-epic_text = st.text_area("Epic text", height=120, placeholder="As a <role>, I want <goal>, so that <benefit>.")
+epic_text = st.text_area(
+    "Epic text", height=120, placeholder="As a <role>, I want <goal>, so that <benefit>."
+)
 
 constraints_text = st.text_area(
     "Constraints (one per line)",

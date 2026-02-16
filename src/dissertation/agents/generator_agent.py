@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -10,8 +11,8 @@ from dissertation.models.schemas import Epic, GherkinScenario, UserStory
 
 class GeneratedBundle(BaseModel):
     """
-    Local schema validation (Pydantic). We use OpenAI JSON mode to ensure valid JSON,
-    then validate/repair locally for "no room for error" robustness.
+    Validate the model output locally (Pydantic).
+    We ask the model for JSON-only output, then validate/repair as needed.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -49,25 +50,54 @@ Return JSON with:
 - trace_map: map story_id -> list of scenario_id
 """
 
+ADAPT_PROMPT_TEMPLATE = """You will adapt a prior requirement bundle to a new epic.
 
-def _call_json_mode(prompt_messages: list[dict], model: str) -> str:
+NEW EPIC
+Epic ID: {epic_id}
+
+Epic text:
+{epic_text}
+
+Constraints:
+{constraints}
+
+Glossary:
+{glossary}
+
+PRIOR REQUIREMENT BUNDLE (from a similar epic; similarity={similarity})
+{prior_bundle_json}
+
+TASK
+- Adapt the prior bundle so it fits the NEW EPIC and constraints.
+- Keep existing story_id and scenario_id values where they still apply.
+- Remove items that no longer fit. Add new stories/scenarios if needed.
+- Ensure:
+  * each story has epic_id = {epic_id}
+  * every scenario has >=1 Given, >=1 When, >=1 Then
+  * trace_map maps each story_id to its scenario_ids
+- Output JSON ONLY matching schema: stories[], scenarios[], trace_map.
+"""
+
+
+def _call_json_mode(prompt_messages: list[dict[str, Any]], model: str) -> str:
     """
-    Uses JSON mode. In Responses API this is done via:
-    text: { format: { type: "json_object" } }
-    which asks the model to output valid JSON. :contentReference[oaicite:1]{index=1}
+    Uses Responses API JSON mode. We pass chat-style {role, content} messages.
+    Some IDEs complain about OpenAI SDK type stubs here; runtime supports it.
     """
     client = get_client()
+
     resp = client.responses.create(
         model=model,
-        input=prompt_messages,
-        text={"format": {"type": "json_object"}},
+        input=prompt_messages,  # type: ignore[arg-type]
+        text={"format": {"type": "json_object"}},  # type: ignore[arg-type]
     )
     return resp.output_text
 
 
 def _repair_json(raw: str, error: str, model: str) -> str:
     schema_hint = GeneratedBundle.model_json_schema()
-    repair_messages = [
+
+    repair_messages: list[dict[str, Any]] = [
         {"role": "system", "content": "You are a JSON repair tool. Output JSON only."},
         {
             "role": "user",
@@ -80,24 +110,53 @@ def _repair_json(raw: str, error: str, model: str) -> str:
             ),
         },
     ]
+
     return _call_json_mode(repair_messages, model=model)
 
 
-def generate_with_openai(epic: Epic, *, max_retries: int = 2) -> GeneratedBundle:
+def generate_with_openai(
+    epic: Epic,
+    *,
+    draft_bundle: dict[str, Any] | None = None,
+    mode: str = "fresh",
+    similarity: float | None = None,
+    max_retries: int = 2,
+) -> GeneratedBundle:
     model = get_model()
 
     glossary_text = "\n".join([f"- {g.term}: {g.definition}" for g in epic.glossary]) or "(none)"
     constraints_text = "\n".join([f"- {c}" for c in epic.constraints]) or "(none)"
 
-    user_prompt = USER_PROMPT_TEMPLATE.format(
-        epic_id=epic.epic_id,
-        epic_text=epic.text.strip(),
-        constraints=constraints_text,
-        glossary=glossary_text,
-    )
+    if draft_bundle is None:
+        # fresh generation (current behaviour)
+        user_prompt = USER_PROMPT_TEMPLATE.format(
+            epic_id=epic.epic_id,
+            epic_text=epic.text.strip(),
+            constraints=constraints_text,
+            glossary=glossary_text,
+        )
+        system_prompt = SYSTEM_PROMPT
+    else:
+        # semantic adaptation
+        prior_bundle_json = json.dumps(draft_bundle, indent=2)
+        sim_value = similarity if similarity is not None else 0.0
 
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        user_prompt = ADAPT_PROMPT_TEMPLATE.format(
+            epic_id=epic.epic_id,
+            epic_text=epic.text.strip(),
+            constraints=constraints_text,
+            glossary=glossary_text,
+            similarity=f"{sim_value:.2f}",
+            prior_bundle_json=prior_bundle_json,
+        )
+
+        system_prompt = (
+            SYSTEM_PROMPT
+            + "\nAdditional rule: You are adapting an existing bundle; preserve IDs where possible."
+        )
+
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
     ]
 
@@ -106,8 +165,8 @@ def generate_with_openai(epic: Epic, *, max_retries: int = 2) -> GeneratedBundle
     for attempt in range(max_retries + 1):
         try:
             data = json.loads(raw)
-            bundle = GeneratedBundle.model_validate(data)
-            return bundle
+            return GeneratedBundle.model_validate(data)
+
         except (json.JSONDecodeError, ValidationError) as e:
             if attempt >= max_retries:
                 raise

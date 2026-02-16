@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from dissertation.models.schemas import Epic, RequirementSet
 from dissertation.core.jira_csv_exporter import export_jira_csv
+from dissertation.models.schemas import Epic, RequirementSet
 
 
 def to_markdown(epic: Epic, req: RequirementSet) -> str:

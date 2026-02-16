@@ -35,7 +35,9 @@ dev = [
   "black>=24.0",
   "pre-commit>=3.7",
 ]
-
+web = [
+  "streamlit>=1.30"
+]
 [project.urls]
 Repository = "https://github.com/m-kanuri/msc-dissertation"
 Issues = "https://github.com/m-kanuri/msc-dissertation/issues"
@@ -70,3 +72,4 @@ ignore = ["E501"]  # black handles line length
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
