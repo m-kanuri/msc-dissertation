@@ -123,7 +123,10 @@ def generate_with_openai(
     max_retries: int = 2,
 ) -> GeneratedBundle:
     model = get_model()
-
+    if not epic.epic_id:
+        raise ValueError("Epic must include epic_id")
+    if not epic.text or not epic.text.strip():
+        raise ValueError("Epic text cannot be empty")
     glossary_text = "\n".join([f"- {g.term}: {g.definition}" for g in epic.glossary]) or "(none)"
     constraints_text = "\n".join([f"- {c}" for c in epic.constraints]) or "(none)"
 
