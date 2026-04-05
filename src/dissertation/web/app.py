@@ -9,9 +9,9 @@ import io
 from pathlib import Path
 
 import streamlit as st
-from dissertation.core.db import get_engine
-from dissertation.core.db_models import Base
-Base.metadata.create_all(bind=get_engine())
+# from dissertation.core.db import get_engine
+# from dissertation.core.db_models import Base
+# Base.metadata.create_all(bind=get_engine())
 from dissertation.core.exporter import export_bundle
 from dissertation.core.orchestrator import run_agentic, run_llm_baseline
 from dissertation.models.schemas import Epic, GlossaryTerm
