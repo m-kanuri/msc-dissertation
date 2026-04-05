@@ -1,10 +1,11 @@
 from __future__ import annotations
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+sys.path.append(
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+)
 import csv
 import io
-import os
 from pathlib import Path
 
 import streamlit as st
