@@ -1,23 +1,62 @@
 # Master of Science in Artificial Intelligence Dissertation — Agentic Requirements Generator
 
 This project implements an agentic pipeline that transforms epics into user stories and Gherkin scenarios, with validation and scoring utilities.
+
+> ⚠️ This application is part of an MSc dissertation project and is intended for research and evaluation purposes.
+
+## Live Demo
+Access the deployed application here:  
+https://agentic-requirements-generator.streamlit.app
+
+---
+
+## Overview
+
+The system uses a multi-agent architecture consisting of:
+- **Generator Agent** – produces initial requirements
+- **Critic Agent** – evaluates quality and consistency
+- **Refiner Agent** – improves outputs based on feedback
+- **Baseline Model** – provides comparison outputs
+
+The pipeline supports:
+- User story generation  
+- Gherkin scenario creation  
+- Traceability and validation  
+- Iterative refinement  
+
+---
+
 ## Technology Stack
 * Python 3.11
 * Streamlit (web UI)
-* PostgreSQL 16 + pgvector
+* PostgreSQL (Neon, serverless) + pgvector  
 * SQLAlchemy
 * OpenAI API
-## Setup
+
+--
+
+## Deployment
+
+The system is deployed as a web application using:
+
+- **Frontend/UI**: Streamlit Cloud  
+- **Backend**: Python (agentic pipeline)  
+- **Database**: PostgreSQL (Neon)  
+- **Vector Support**: pgvector extension  
+
+--
+
+## Local Setup
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -r requirements.txt
 
 dissertation --help
 
 
-### D) Add `LICENSE` (MIT)
+### Add `LICENSE` (MIT)
 ```bash
 cat > LICENSE <<'EOF'
 MIT License
